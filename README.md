@@ -2,6 +2,8 @@ OpenJDK 8 M3
 ============
 
 OpenJDK 8 uses mercurial instead of git, so we supply a patch instead.
+The M3 monitor is included as part of this patch, under the top level directory `sigve`.
+The monitor is also available separately at [https://github.com/dsrg-uoft/M3-monitor](https://github.com/dsrg-uoft/M3-monitor).
 
 ### Instructions
 

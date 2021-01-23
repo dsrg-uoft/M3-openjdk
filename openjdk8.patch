@@ -1,0 +1,1799 @@
+diff --git a/Makefile b/Makefile
+index 7fe922ba..f3275e00 100644
+--- a/Makefile
++++ b/Makefile
+@@ -1,130 +1,89 @@
+-#
+-# Copyright (c) 2012, 2013, Oracle and/or its affiliates. All rights reserved.
+-# DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+-#
+-# This code is free software; you can redistribute it and/or modify it
+-# under the terms of the GNU General Public License version 2 only, as
+-# published by the Free Software Foundation.  Oracle designates this
+-# particular file as subject to the "Classpath" exception as provided
+-# by Oracle in the LICENSE file that accompanied this code.
+-#
+-# This code is distributed in the hope that it will be useful, but WITHOUT
+-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+-# FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+-# version 2 for more details (a copy is included in the LICENSE file that
+-# accompanied this code).
+-#
+-# You should have received a copy of the GNU General Public License version
+-# 2 along with this work; if not, write to the Free Software Foundation,
+-# Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+-#
+-# Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+-# or visit www.oracle.com if you need additional information or have any
+-# questions.
+-#
++.PHONY: sigve sigve-debug image image-all install clean-sigve clean clean-all dist-clean dist-clean-all config config-all help
+ 
+-# This must be the first rule
+-default:
++CONF      = release
++JVM_TAG   = vanilla
++JVM_NAME  = j2sdk-image.java8.$(JVM_TAG)
++LOCAL_JVM = $(HOME)/jvms/$(JVM_NAME)
++BUILD_DIR = build/linux-x86_64-normal-server-$(CONF)
++BUILD_JVM = $(BUILD_DIR)/images/j2sdk-image
+ 
+-# Inclusion of this pseudo-target will cause make to execute this file
+-# serially, regardless of -j. Recursively called makefiles will not be
+-# affected, however. This is required for correct dependency management.
+-.NOTPARALLEL:
++sigve: image
++	-make -C sigve sigve
++	-make -C sigve install
+ 
+-# The shell code below will be executed on /usr/ccs/bin/make on Solaris, but not in GNU make.
+-# /usr/ccs/bin/make lacks basically every other flow control mechanism.
+-TEST_FOR_NON_GNUMAKE:sh=echo You are not using GNU make/gmake, this is a requirement. Check your path. 1>&2 && exit 1
++sigve-debug: image
++	-make -C sigve debug
++	-make -C sigve install
+ 
+-# Assume we have GNU make, but check version.
+-ifeq ($(strip $(foreach v, 3.81% 3.82% 4.%, $(filter $v, $(MAKE_VERSION)))), )
+-  $(error This version of GNU Make is too low ($(MAKE_VERSION)). Check your path, or upgrade to 3.81 or newer.)
+-endif
++image:
++	make -f Makefile.openjdk CONF=$(CONF) images
+ 
+-# Locate this Makefile
+-ifeq ($(filter /%,$(lastword $(MAKEFILE_LIST))),)
+-  makefile_path:=$(CURDIR)/$(lastword $(MAKEFILE_LIST))
+-else
+-  makefile_path:=$(lastword $(MAKEFILE_LIST))
+-endif
+-root_dir:=$(dir $(makefile_path))
++image-all:
++	-make CONF="release"   image
++	-make CONF="fastdebug" image
++	-make CONF="slowdebug" image
+ 
+-# ... and then we can include our helper functions
+-include $(root_dir)/make/MakeHelpers.gmk
++install:
++	rm -rf $(LOCAL_JVM)
++	cp $(BUILD_DIR)/jdk/objs/java_objs/java.debuginfo $(BUILD_JVM)/bin/
++	cp -r $(BUILD_JVM) $(LOCAL_JVM)
++	cd $(LOCAL_JVM)/jre/lib/amd64/server && unzip libjvm.diz
++	cd $(LOCAL_JVM)/jre/lib/amd64 && unzip libjava.diz
++	unlink $(HOME)/jvms/java_home
++	ln -s $(LOCAL_JVM) $(HOME)/jvms/java_home
+ 
+-$(eval $(call ParseLogLevel))
+-$(eval $(call ParseConfAndSpec))
++clean-sigve:
++	-make -C sigve clean
+ 
+-# Now determine if we have zero, one or several configurations to build.
+-ifeq ($(SPEC),)
+-  # Since we got past ParseConfAndSpec, we must be building a global target. Do nothing.
+-else
+-  ifeq ($(words $(SPEC)),1)
+-    # We are building a single configuration. This is the normal case. Execute the Main.gmk file.
+-    include $(root_dir)/make/Main.gmk
+-  else
+-    # We are building multiple configurations.
+-    # First, find out the valid targets
+-    # Run the makefile with an arbitrary SPEC using -p -q (quiet dry-run and dump rules) to find
+-    # available PHONY targets. Use this list as valid targets to pass on to the repeated calls.
+-    all_phony_targets=$(filter-out $(global_targets), $(strip $(shell \
+-        cd $(root_dir) && $(MAKE) -p -q FRC SPEC=$(firstword $(SPEC)) | \
+-        grep ^.PHONY: | head -n 1 | cut -d " " -f 2-)))
++clean: clean-sigve
++	-make -f Makefile.openjdk CONF=$(CONF) clean
+ 
+-    $(all_phony_targets):
+-	@$(foreach spec,$(SPEC),(cd $(root_dir) && $(MAKE) SPEC=$(spec) \
+-	    $(VERBOSE) VERBOSE=$(VERBOSE) LOG_LEVEL=$(LOG_LEVEL) $@) &&) true
++clean-all:
++	-make CONF="release"   clean
++	-make CONF="fastdebug" clean
++	-make CONF="slowdebug" clean
+ 
+-    .PHONY: $(all_phony_targets)
++dist-clean: clean-sigve
++	-make -f Makefile.openjdk CONF=$(CONF) dist-clean
+ 
+-  endif
+-endif
++dist-clean-all:
++	-make CONF="release"   dist-clean
++	-make CONF="fastdebug" dist-clean
++	-make CONF="slowdebug" dist-clean
+ 
+-# Here are "global" targets, i.e. targets that can be executed without specifying a single configuration.
+-# If you addd more global targets, please update the variable global_targets in MakeHelpers.
++config:
++	bash ./configure --with-boot-jdk=/usr/lib/jvm/java-8-openjdk-amd64 \
++		--with-cacerts-file=/usr/lib/jvm/java-8-openjdk-amd64/jre/lib/security/cacerts \
++		--with-freetype-lib=/usr/lib/x86_64-linux-gnu \
++		--with-freetype-include=/usr/include/freetype2 \
++		--with-debug-level=$(CONF)
+ 
+-help:
+-	$(info )
+-	$(info OpenJDK Makefile help)
+-	$(info =====================)
+-	$(info )
+-	$(info Common make targets)
+-	$(info .  make [default]         # Compile all product in langtools, hotspot, jaxp, jaxws,)
+-	$(info .                         # corba and jdk)
+-	$(info .  make all               # Compile everything, all repos and images)
+-	$(info .  make images            # Create complete j2sdk and j2re images)
+-	$(info .  make docs              # Create javadocs)
+-	$(info .  make overlay-images    # Create limited images for sparc 64 bit platforms)
+-	$(info .  make profiles          # Create complete j2re compact profile images)
+-	$(info .  make bootcycle-images  # Build images twice, second time with newly build JDK)
+-	$(info .  make install           # Install the generated images locally)
+-	$(info .  make clean             # Remove all files generated by make, but not those)
+-	$(info .                         # generated by configure)
+-	$(info .  make dist-clean        # Remove all files, including configuration)
+-	$(info .  make help              # Give some help on using make)
+-	$(info .  make test              # Run tests, default is all tests (see TEST below))
+-	$(info )
+-	$(info Targets for specific components)
+-	$(info (Component is any of langtools, corba, jaxp, jaxws, hotspot, jdk, nashorn, images, overlay-images, docs or test))
+-	$(info .  make <component>       # Build <component> and everything it depends on. )
+-	$(info .  make <component>-only  # Build <component> only, without dependencies. This)
+-	$(info .                         # is faster but can result in incorrect build results!)
+-	$(info .  make clean-<component> # Remove files generated by make for <component>)
+-	$(info )
+-	$(info Useful make variables)
+-	$(info .  make CONF=             # Build all configurations (note, assignment is empty))
+-	$(info .  make CONF=<substring>  # Build the configuration(s) with a name matching)
+-	$(info .                         # <substring>)
+-	$(info )
+-	$(info .  make LOG=<loglevel>    # Change the log level from warn to <loglevel>)
+-	$(info .                         # Available log levels are:)
+-	$(info .                         # 'warn' (default), 'info', 'debug' and 'trace')
+-	$(info .                         # To see executed command lines, use LOG=debug)
+-	$(info )
+-	$(info .  make JOBS=<n>          # Run <n> parallel make jobs)
+-	$(info .                         # Note that -jN does not work as expected!)
+-	$(info )
+-	$(info .  make test TEST=<test>  # Only run the given test or tests, e.g.)
+-	$(info .                         # make test TEST="jdk_lang jdk_net")
+-	$(info )
++config-all:
++	-make CONF="release"   config
++	-make CONF="fastdebug" config
++	-make CONF="slowdebug" config
+ 
+-.PHONY: help
++help:
++	@echo
++	@echo 'sigve Makefile'
++	@echo '=============='
++	@echo 'commands:'
++	@echo '- sigve (default): build a JVM image with sigve'
++	@echo '- sigve-debug: build a JVM image with debug sigve'
++	@echo '- image: build only the JVM image'
++	@echo '- image-all: build JVM images for all targets'
++	@echo '- install: the minecrafters do all sorts of research!'
++	@echo '- clean: so fresh'
++	@echo '- clean-all: so fresh and so clean'
++	@echo '- dist-clean: nothing left'
++	@echo '- dist-clean-all: nothing left for all targets'
++	@echo '- config: gl'
++	@echo '- config-all: glhf'
++	@echo '- help: show this help'
++	@echo 'build targets: set with `CONF="<target>"'
++	@echo '- release (default)'
++	@echo '- fastdebug'
++	@echo '- slowdebug'
++	@echo 'example: clean and build slowdebug'
++	@echo 'make CONF="slowdebug" clean && make CONF="slowdebug" image'
++	@echo
+diff --git a/Makefile.openjdk b/Makefile.openjdk
+new file mode 100644
+index 00000000..7fe922ba
+--- /dev/null
++++ b/Makefile.openjdk
+@@ -0,0 +1,130 @@
++#
++# Copyright (c) 2012, 2013, Oracle and/or its affiliates. All rights reserved.
++# DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
++#
++# This code is free software; you can redistribute it and/or modify it
++# under the terms of the GNU General Public License version 2 only, as
++# published by the Free Software Foundation.  Oracle designates this
++# particular file as subject to the "Classpath" exception as provided
++# by Oracle in the LICENSE file that accompanied this code.
++#
++# This code is distributed in the hope that it will be useful, but WITHOUT
++# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++# FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
++# version 2 for more details (a copy is included in the LICENSE file that
++# accompanied this code).
++#
++# You should have received a copy of the GNU General Public License version
++# 2 along with this work; if not, write to the Free Software Foundation,
++# Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
++#
++# Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
++# or visit www.oracle.com if you need additional information or have any
++# questions.
++#
++
++# This must be the first rule
++default:
++
++# Inclusion of this pseudo-target will cause make to execute this file
++# serially, regardless of -j. Recursively called makefiles will not be
++# affected, however. This is required for correct dependency management.
++.NOTPARALLEL:
++
++# The shell code below will be executed on /usr/ccs/bin/make on Solaris, but not in GNU make.
++# /usr/ccs/bin/make lacks basically every other flow control mechanism.
++TEST_FOR_NON_GNUMAKE:sh=echo You are not using GNU make/gmake, this is a requirement. Check your path. 1>&2 && exit 1
++
++# Assume we have GNU make, but check version.
++ifeq ($(strip $(foreach v, 3.81% 3.82% 4.%, $(filter $v, $(MAKE_VERSION)))), )
++  $(error This version of GNU Make is too low ($(MAKE_VERSION)). Check your path, or upgrade to 3.81 or newer.)
++endif
++
++# Locate this Makefile
++ifeq ($(filter /%,$(lastword $(MAKEFILE_LIST))),)
++  makefile_path:=$(CURDIR)/$(lastword $(MAKEFILE_LIST))
++else
++  makefile_path:=$(lastword $(MAKEFILE_LIST))
++endif
++root_dir:=$(dir $(makefile_path))
++
++# ... and then we can include our helper functions
++include $(root_dir)/make/MakeHelpers.gmk
++
++$(eval $(call ParseLogLevel))
++$(eval $(call ParseConfAndSpec))
++
++# Now determine if we have zero, one or several configurations to build.
++ifeq ($(SPEC),)
++  # Since we got past ParseConfAndSpec, we must be building a global target. Do nothing.
++else
++  ifeq ($(words $(SPEC)),1)
++    # We are building a single configuration. This is the normal case. Execute the Main.gmk file.
++    include $(root_dir)/make/Main.gmk
++  else
++    # We are building multiple configurations.
++    # First, find out the valid targets
++    # Run the makefile with an arbitrary SPEC using -p -q (quiet dry-run and dump rules) to find
++    # available PHONY targets. Use this list as valid targets to pass on to the repeated calls.
++    all_phony_targets=$(filter-out $(global_targets), $(strip $(shell \
++        cd $(root_dir) && $(MAKE) -p -q FRC SPEC=$(firstword $(SPEC)) | \
++        grep ^.PHONY: | head -n 1 | cut -d " " -f 2-)))
++
++    $(all_phony_targets):
++	@$(foreach spec,$(SPEC),(cd $(root_dir) && $(MAKE) SPEC=$(spec) \
++	    $(VERBOSE) VERBOSE=$(VERBOSE) LOG_LEVEL=$(LOG_LEVEL) $@) &&) true
++
++    .PHONY: $(all_phony_targets)
++
++  endif
++endif
++
++# Here are "global" targets, i.e. targets that can be executed without specifying a single configuration.
++# If you addd more global targets, please update the variable global_targets in MakeHelpers.
++
++help:
++	$(info )
++	$(info OpenJDK Makefile help)
++	$(info =====================)
++	$(info )
++	$(info Common make targets)
++	$(info .  make [default]         # Compile all product in langtools, hotspot, jaxp, jaxws,)
++	$(info .                         # corba and jdk)
++	$(info .  make all               # Compile everything, all repos and images)
++	$(info .  make images            # Create complete j2sdk and j2re images)
++	$(info .  make docs              # Create javadocs)
++	$(info .  make overlay-images    # Create limited images for sparc 64 bit platforms)
++	$(info .  make profiles          # Create complete j2re compact profile images)
++	$(info .  make bootcycle-images  # Build images twice, second time with newly build JDK)
++	$(info .  make install           # Install the generated images locally)
++	$(info .  make clean             # Remove all files generated by make, but not those)
++	$(info .                         # generated by configure)
++	$(info .  make dist-clean        # Remove all files, including configuration)
++	$(info .  make help              # Give some help on using make)
++	$(info .  make test              # Run tests, default is all tests (see TEST below))
++	$(info )
++	$(info Targets for specific components)
++	$(info (Component is any of langtools, corba, jaxp, jaxws, hotspot, jdk, nashorn, images, overlay-images, docs or test))
++	$(info .  make <component>       # Build <component> and everything it depends on. )
++	$(info .  make <component>-only  # Build <component> only, without dependencies. This)
++	$(info .                         # is faster but can result in incorrect build results!)
++	$(info .  make clean-<component> # Remove files generated by make for <component>)
++	$(info )
++	$(info Useful make variables)
++	$(info .  make CONF=             # Build all configurations (note, assignment is empty))
++	$(info .  make CONF=<substring>  # Build the configuration(s) with a name matching)
++	$(info .                         # <substring>)
++	$(info )
++	$(info .  make LOG=<loglevel>    # Change the log level from warn to <loglevel>)
++	$(info .                         # Available log levels are:)
++	$(info .                         # 'warn' (default), 'info', 'debug' and 'trace')
++	$(info .                         # To see executed command lines, use LOG=debug)
++	$(info )
++	$(info .  make JOBS=<n>          # Run <n> parallel make jobs)
++	$(info .                         # Note that -jN does not work as expected!)
++	$(info )
++	$(info .  make test TEST=<test>  # Only run the given test or tests, e.g.)
++	$(info .                         # make test TEST="jdk_lang jdk_net")
++	$(info )
++
++.PHONY: help
+diff --git a/hotspot/make/linux/makefiles/mapfile-vers-debug b/hotspot/make/linux/makefiles/mapfile-vers-debug
+index 2da4b7d9..33bb9efe 100644
+--- a/hotspot/make/linux/makefiles/mapfile-vers-debug
++++ b/hotspot/make/linux/makefiles/mapfile-vers-debug
+@@ -94,6 +94,7 @@ SUNWprivate_1.1 {
+                 JVM_FindSignal;
+                 JVM_FreeMemory;
+                 JVM_GC;
++                JVM_SIGVE;
+                 JVM_GetAllThreads;
+                 JVM_GetArrayElement;
+                 JVM_GetArrayLength;
+diff --git a/hotspot/make/linux/makefiles/mapfile-vers-product b/hotspot/make/linux/makefiles/mapfile-vers-product
+index 4ec3d5bf..536a8f7c 100644
+--- a/hotspot/make/linux/makefiles/mapfile-vers-product
++++ b/hotspot/make/linux/makefiles/mapfile-vers-product
+@@ -94,6 +94,7 @@ SUNWprivate_1.1 {
+                 JVM_FindSignal;
+                 JVM_FreeMemory;
+                 JVM_GC;
++                JVM_SIGVE;
+                 JVM_GetAllThreads;
+                 JVM_GetArrayElement;
+                 JVM_GetArrayLength;
+diff --git a/hotspot/src/os/linux/vm/jvm_linux.cpp b/hotspot/src/os/linux/vm/jvm_linux.cpp
+index ba84788a..484e6de5 100644
+--- a/hotspot/src/os/linux/vm/jvm_linux.cpp
++++ b/hotspot/src/os/linux/vm/jvm_linux.cpp
+@@ -173,6 +173,8 @@ struct siglabel siglabels[] = {
+ #ifdef SIGSYS
+   "SYS",        SIGSYS          /* Bad system call. Only on some Linuxen! */
+ #endif
++  , "VE",       SIGVE
++  , "VF",       SIGVF
+   };
+ 
+ JVM_ENTRY_NO_ENV(jint, JVM_FindSignal(const char *name))
+diff --git a/hotspot/src/os/linux/vm/jvm_linux.h b/hotspot/src/os/linux/vm/jvm_linux.h
+index dd5e3894..ff5ee77c 100644
+--- a/hotspot/src/os/linux/vm/jvm_linux.h
++++ b/hotspot/src/os/linux/vm/jvm_linux.h
+@@ -92,6 +92,8 @@
+ #define SHUTDOWN1_SIGNAL SIGHUP            /* Shutdown Hooks support.    */
+ #define SHUTDOWN2_SIGNAL SIGINT
+ #define SHUTDOWN3_SIGNAL SIGTERM
++#define SIGVE            64
++#define SIGVF            63
+ 
+ #endif /* JVM_MD_H */
+ 
+diff --git a/hotspot/src/os/linux/vm/os_linux.cpp b/hotspot/src/os/linux/vm/os_linux.cpp
+index 044a70a6..209370fe 100644
+--- a/hotspot/src/os/linux/vm/os_linux.cpp
++++ b/hotspot/src/os/linux/vm/os_linux.cpp
+@@ -1412,6 +1412,14 @@ jlong os::javaTimeNanos() {
+   }
+ }
+ 
++unsigned long os::realtime() {
++  struct timespec tp;
++  int status = Linux::clock_gettime(CLOCK_REALTIME, &tp);
++  assert(status == 0, "gettime error");
++  unsigned long result = tp.tv_sec * (1000UL * 1000 * 1000) + tp.tv_nsec;
++  return result;
++}
++
+ void os::javaTimeNanos_info(jvmtiTimerInfo *info_ptr) {
+   if (Linux::supports_monotonic_clock()) {
+     info_ptr->max_value = ALL_64_BITS;
+@@ -2529,6 +2537,51 @@ int os::signal_wait() {
+   return check_pending_signals(true);
+ }
+ 
++// note: we setup the actual java userHandler in System.initializeSystemClass
++// by default it calls JVM_SIGVE (see sigve in Runtime.c)
++int os::sigve_init() {
++  int pid = current_process_id();
++  char path[17]; // /tmp/sigve/(11) + pid(5: default max = 32768) + null
++  snprintf(path, 17, "/tmp/sigve/%d", pid);
++
++  int fd = ::open(path, O_CREAT | O_EXCL | O_RDWR, 0664);
++  if (fd == -1) {
++    if (errno == EEXIST) {
++      if (::unlink(path)) {
++        tty->print("[sigve][error] unlink (%d %s)\n", errno, strerror(errno));
++        return -1;
++      }
++      fd = ::open(path, O_CREAT | O_EXCL | O_RDWR, 0664);
++      if (fd == -1) {
++        tty->print("[sigve][error] open failed after unlink (%d %s)\n", errno, strerror(errno));
++        return -1;
++      }
++    } else {
++      tty->print("[sigve][error] open failed (%d %s)\n", errno, strerror(errno));
++      return -1;
++    }
++  }
++  ::close(fd);
++
++  if (UseSIGVE) {
++    signal(SIGVE, user_handler());
++    signal(SIGVF, user_handler());
++  }
++
++  tty->print("[sigve] init pid = %d\n", pid);
++  return 0;
++}
++
++void os::sigve_destroy() {
++  int pid = current_process_id();
++  char path[17]; // /tmp/sigve/(11) + pid(5: default max = 32768) + null
++  snprintf(path, 17, "/tmp/sigve/%d", pid);
++
++  if (::unlink(path)) {
++    tty->print("[sigve][error] destroy unlink (%d %s)\n", errno, strerror(errno));
++  }
++}
++
+ ////////////////////////////////////////////////////////////////////////////////
+ // Virtual Memory
+ 
+@@ -6288,6 +6341,10 @@ int os::get_core_path(char* buffer, size_t bufferSize) {
+   return strlen(buffer);
+ }
+ 
++int os::madvise_dontneed(char *addr, size_t bytes) {
++  return ::madvise(addr, bytes, MADV_DONTNEED);
++}
++
+ /////////////// Unit tests ///////////////
+ 
+ #ifndef PRODUCT
+diff --git a/hotspot/src/os/linux/vm/os_linux.inline.hpp b/hotspot/src/os/linux/vm/os_linux.inline.hpp
+index 10d56d89..771e998e 100644
+--- a/hotspot/src/os/linux/vm/os_linux.inline.hpp
++++ b/hotspot/src/os/linux/vm/os_linux.inline.hpp
+@@ -116,6 +116,11 @@ inline int os::ftruncate(int fd, jlong length) {
+ 
+ inline struct dirent* os::readdir(DIR* dirp, dirent *dbuf)
+ {
++// hotspot quickfix see: http://hg.openjdk.java.net/jdk10/master/rev/f5f2a2d13775
++// readdir_r has been deprecated since glibc 2.24.
++// See https://sourceware.org/bugzilla/show_bug.cgi?id=19056 for more details.
++#pragma GCC diagnostic push
++#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+   dirent* p;
+   int status;
+   assert(dirp != NULL, "just checking");
+@@ -129,6 +134,8 @@ inline struct dirent* os::readdir(DIR* dirp, dirent *dbuf)
+     return NULL;
+   } else
+     return p;
++
++#pragma GCC diagnostic pop
+ }
+ 
+ inline int os::closedir(DIR *dirp) {
+diff --git a/hotspot/src/share/vm/code/dependencies.cpp b/hotspot/src/share/vm/code/dependencies.cpp
+index c284160e..30bbe302 100644
+--- a/hotspot/src/share/vm/code/dependencies.cpp
++++ b/hotspot/src/share/vm/code/dependencies.cpp
+@@ -525,7 +525,7 @@ void Dependencies::write_dependency_to(xmlStream* xtty,
+         xtty->object("x", arg.metadata_value());
+       }
+     } else {
+-      char xn[10]; sprintf(xn, "x%d", j);
++      char xn[10]; sprintf(xn, "x%d", (short)j);
+       if (arg.is_oop()) {
+         xtty->object(xn, arg.oop_value());
+       } else {
+diff --git a/hotspot/src/share/vm/gc_implementation/g1/g1CollectedHeap.cpp b/hotspot/src/share/vm/gc_implementation/g1/g1CollectedHeap.cpp
+index 76bfcd6e..95b82066 100644
+--- a/hotspot/src/share/vm/gc_implementation/g1/g1CollectedHeap.cpp
++++ b/hotspot/src/share/vm/gc_implementation/g1/g1CollectedHeap.cpp
+@@ -1524,6 +1524,16 @@ bool G1CollectedHeap::do_collection(bool explicit_gc,
+       g1mm()->update_sizes();
+ 
+       gc_epilogue(true);
++
++      /*
++      if (UseSIGVE && (gc_cause() == GCCause::_sigvf || gc_cause() == GCCause::_java_lang_system_gc)) {
++      TimeStamp ts;
++      unsigned long long freed_bytes = 0;
++      ts.update();
++      int freed = _hrm.madvise_free_list(0, freed_bytes);
++      gclog_or_tty->print("{[sigvf] madvise regions: %d (%llu bytes), took: %ld}\n", freed, freed_bytes, ts.ticks_since_update());
++      }
++      */
+     }
+ 
+     if (G1Log::finer()) {
+@@ -1836,6 +1846,7 @@ void G1CollectedHeap::shrink(size_t shrink_bytes) {
+ 
+ G1CollectedHeap::G1CollectedHeap(G1CollectorPolicy* policy_) :
+   SharedHeap(policy_),
++  _sigve_gctime(0),
+   _g1_policy(policy_),
+   _dirty_card_queue_set(false),
+   _into_cset_dirty_card_queue_set(false),
+@@ -2484,6 +2495,30 @@ void G1CollectedHeap::collect(GCCause::Cause cause) {
+     {
+       MutexLocker ml(Heap_lock);
+ 
++      // check if we should handle sigve (sigvf should always cause full pause)
++      if (UseSIGVE && cause == GCCause::_sigve) {
++        if (_sigve_ts.is_updated()) {
++          jlong time_since_sigve = _sigve_ts.ticks_since_update();
++          double cost = time_since_sigve * (SIGVECost * 1.0 / 100);
++          if (_sigve_gctime > cost) {
++            gclog_or_tty->print("%lu: [sigve] dropping signal (gc time: %ld, cost: %.3f, time since: %ld)\n",
++                os::realtime(), _sigve_gctime, cost, time_since_sigve);
++            return;
++          } else {
++              gclog_or_tty->print("%lu: [sigve] handling signal (gc time: %ld, cost: %.3f, time since: %ld)\n",
++                  os::realtime(), _sigve_gctime, cost, time_since_sigve);
++          }
++        } else {
++            gclog_or_tty->print("%lu: [sigve] handling signal _sigve_ts not updated (gc time: %ld)\n",
++                os::realtime(), _sigve_gctime);
++        }
++        // clear timestamp since we decided to handle sigve
++        _sigve_ts.clear();
++      }
++      if (UseSIGVE) {
++        gclog_or_tty->print("%lu: [%s] handling signal\n", os::realtime(), GCCause::to_string(cause));
++      }
++
+       // Read the GC count while holding the Heap_lock
+       gc_count_before = total_collections();
+       full_gc_count_before = total_full_collections();
+@@ -2519,6 +2554,7 @@ void G1CollectedHeap::collect(GCCause::Cause cause) {
+       }
+     } else {
+       if (cause == GCCause::_gc_locker || cause == GCCause::_wb_young_gc
++          || (UseSIGVE && cause == GCCause::_sigve) /* || (UseSIGVE && cause == GCCause::_java_lang_system_gc) */
+           DEBUG_ONLY(|| cause == GCCause::_scavenge_alot)) {
+ 
+         // Schedule a standard evacuation pause. We're setting word_size
+@@ -2530,6 +2566,7 @@ void G1CollectedHeap::collect(GCCause::Cause cause) {
+                                    cause);
+         VMThread::execute(&op);
+       } else {
++        gclog_or_tty->print("%lu: [sigvf] doing full gc\n", os::realtime());
+         // Schedule a Full GC.
+         VM_G1CollectFull op(gc_count_before, full_gc_count_before, cause);
+         VMThread::execute(&op);
+@@ -4244,7 +4281,7 @@ G1CollectedHeap::do_collection_pause_at_safepoint(double target_pause_time_ms) {
+         // investigate this in CR 7178365.
+         double sample_end_time_sec = os::elapsedTime();
+         double pause_time_ms = (sample_end_time_sec - sample_start_time_sec) * MILLIUNITS;
+-        g1_policy()->record_collection_pause_end(pause_time_ms, evacuation_info);
++        g1_policy()->record_collection_pause_end(pause_time_ms, evacuation_info, gc_cause());
+ 
+         MemoryService::track_memory_usage();
+ 
+@@ -4324,10 +4361,29 @@ G1CollectedHeap::do_collection_pause_at_safepoint(double target_pause_time_ms) {
+     // before any GC notifications are raised.
+     g1mm()->update_sizes();
+ 
++    /*
++    if (UseSIGVE && (gc_cause() == GCCause::_sigve || gc_cause() == GCCause::_java_lang_system_gc)) {
++      TimeStamp ts;
++      ts.update();
++      unsigned long long freed_bytes = 0;
++      int freed = _hrm.madvise_free_list(0, freed_bytes);
++      gclog_or_tty->print("{[sigve] madvise regions: %d (%llu bytes), took: %ld}\n", freed, freed_bytes, ts.ticks_since_update());
++    }
++    */
++
++    if (UseSIGVE && (gc_cause() == GCCause::_sigve)) {
++      _sigve_ts.update();
++    }
++
+     _gc_tracer_stw->report_evacuation_info(&evacuation_info);
+     _gc_tracer_stw->report_tenuring_threshold(_g1_policy->tenuring_threshold());
+     _gc_timer_stw->register_gc_end();
+     _gc_tracer_stw->report_gc_end(_gc_timer_stw->gc_end(), _gc_timer_stw->time_partitions());
++
++    if (UseSIGVE && gc_cause() == GCCause::_sigve) {
++      _sigve_gctime = _gc_timer_stw->gc_end().value() - _gc_timer_stw->gc_start().value();
++      gclog_or_tty->print("{[sigve_gctime] updating gctime with stw: %ld}\n", _sigve_gctime);
++    }
+   }
+   // It should now be safe to tell the concurrent mark thread to start
+   // without its logging output interfering with the logging output
+@@ -5902,6 +5958,12 @@ void G1CollectedHeap::free_region(HeapRegion* hr,
+   }
+   hr->hr_clear(par, true /* clear_space */, locked /* locked */);
+   free_list->add_ordered(hr);
++
++  /*
++  int ret = os::madvise_dontneed((char *) hr->bottom(), hr->capacity());
++  assert(!ret, "hottub madvise issue");
++  gclog_or_tty->print("{[sigve] madvise freed3 %zd, %p}\n", hr->capacity(), hr->bottom());
++  */
+ }
+ 
+ void G1CollectedHeap::free_humongous_region(HeapRegion* hr,
+@@ -6640,6 +6702,12 @@ public:
+       // Add free regions to the free list
+       r->set_free();
+       r->set_allocation_context(AllocationContext::system());
++      //gclog_or_tty->print("{[sigve] madvise start %p, len %zd}\n", r->bottom(), r->capacity());
++      /*
++      int ret = os::madvise_dontneed((char *) r->bottom(), r->capacity());
++      assert(!ret, "hottub madvise issue");
++      gclog_or_tty->print("{[sigve] madvise freed2 %zd, %p}\n", r->capacity(), r->bottom());
++      */
+       _hrm->insert_into_free_list(r);
+     } else if (!_free_list_only) {
+       assert(!r->is_young(), "we should not come across young regions");
+diff --git a/hotspot/src/share/vm/gc_implementation/g1/g1CollectedHeap.hpp b/hotspot/src/share/vm/gc_implementation/g1/g1CollectedHeap.hpp
+index 500390af..7cf89d78 100644
+--- a/hotspot/src/share/vm/gc_implementation/g1/g1CollectedHeap.hpp
++++ b/hotspot/src/share/vm/gc_implementation/g1/g1CollectedHeap.hpp
+@@ -220,6 +220,9 @@ private:
+   // The one and only G1CollectedHeap, so static functions can find it.
+   static G1CollectedHeap* _g1h;
+ 
++  TimeStamp _sigve_ts;
++  jlong _sigve_gctime;
++
+   static size_t _humongous_object_threshold_in_words;
+ 
+   // The secondary free list which contains regions that have been
+diff --git a/hotspot/src/share/vm/gc_implementation/g1/g1CollectorPolicy.cpp b/hotspot/src/share/vm/gc_implementation/g1/g1CollectorPolicy.cpp
+index ea80c449..c58f0ae3 100644
+--- a/hotspot/src/share/vm/gc_implementation/g1/g1CollectorPolicy.cpp
++++ b/hotspot/src/share/vm/gc_implementation/g1/g1CollectorPolicy.cpp
+@@ -956,7 +956,7 @@ bool G1CollectorPolicy::need_to_start_conc_mark(const char* source, size_t alloc
+ // Anything below that is considered to be zero
+ #define MIN_TIMER_GRANULARITY 0.0000001
+ 
+-void G1CollectorPolicy::record_collection_pause_end(double pause_time_ms, EvacuationInfo& evacuation_info) {
++void G1CollectorPolicy::record_collection_pause_end(double pause_time_ms, EvacuationInfo& evacuation_info, GCCause::Cause gc_cause) {
+   double end_time_sec = os::elapsedTime();
+   assert(_cur_collection_pause_used_regions_at_start >= cset_region_length(),
+          "otherwise, the subtraction below does not make sense");
+@@ -1078,6 +1078,11 @@ void G1CollectorPolicy::record_collection_pause_end(double pause_time_ms, Evacua
+     }
+   }
+ 
++  // always do mixed if we got high signal
++  if (!last_pause_included_initial_mark && UseSIGVE && (gc_cause == GCCause::_sigvf || gc_cause == GCCause::_java_lang_system_gc)) {
++    set_gcs_are_young(false);
++  }
++
+   _short_lived_surv_rate_group->start_adding_regions();
+   // do that for any other surv rate groupsx
+ 
+diff --git a/hotspot/src/share/vm/gc_implementation/g1/g1CollectorPolicy.hpp b/hotspot/src/share/vm/gc_implementation/g1/g1CollectorPolicy.hpp
+index 96e4dc63..604cdc3f 100644
+--- a/hotspot/src/share/vm/gc_implementation/g1/g1CollectorPolicy.hpp
++++ b/hotspot/src/share/vm/gc_implementation/g1/g1CollectorPolicy.hpp
+@@ -673,7 +673,7 @@ public:
+ 
+   // Record the start and end of an evacuation pause.
+   void record_collection_pause_start(double start_time_sec);
+-  void record_collection_pause_end(double pause_time_ms, EvacuationInfo& evacuation_info);
++  void record_collection_pause_end(double pause_time_ms, EvacuationInfo& evacuation_info, GCCause::Cause gc_cause);
+ 
+   // Record the start and end of a full collection.
+   void record_full_collection_start();
+diff --git a/hotspot/src/share/vm/gc_implementation/g1/g1RegionToSpaceMapper.cpp b/hotspot/src/share/vm/gc_implementation/g1/g1RegionToSpaceMapper.cpp
+index 0c26b783..1dfea53d 100644
+--- a/hotspot/src/share/vm/gc_implementation/g1/g1RegionToSpaceMapper.cpp
++++ b/hotspot/src/share/vm/gc_implementation/g1/g1RegionToSpaceMapper.cpp
+@@ -72,6 +72,7 @@ class G1RegionsLargerThanCommitSizeMapper : public G1RegionToSpaceMapper {
+     fire_on_commit(start_idx, num_regions, zero_filled);
+   }
+ 
++  // hotspot: normal path??
+   virtual void uncommit_regions(uint start_idx, size_t num_regions) {
+     _storage.uncommit((size_t)start_idx * _pages_per_region, num_regions * _pages_per_region);
+     _commit_map.clear_range(start_idx, start_idx + num_regions);
+diff --git a/hotspot/src/share/vm/gc_implementation/g1/heapRegionManager.cpp b/hotspot/src/share/vm/gc_implementation/g1/heapRegionManager.cpp
+index 020eb08d..06ce721c 100644
+--- a/hotspot/src/share/vm/gc_implementation/g1/heapRegionManager.cpp
++++ b/hotspot/src/share/vm/gc_implementation/g1/heapRegionManager.cpp
+@@ -131,6 +131,7 @@ void HeapRegionManager::make_regions_available(uint start, uint num_regions) {
+ 
+   _available_map.par_set_range(start, start + num_regions, BitMap::unknown_range);
+ 
++  //unsigned long long madvise_freed = 0;
+   for (uint i = start; i < start + num_regions; i++) {
+     assert(is_available(i), err_msg("Just made region %u available but is apparently not.", i));
+     HeapRegion* hr = at(i);
+@@ -141,8 +142,17 @@ void HeapRegionManager::make_regions_available(uint start, uint num_regions) {
+     MemRegion mr(bottom, bottom + HeapRegion::GrainWords);
+ 
+     hr->initialize(mr);
++    /*
++    int ret = os::madvise_dontneed((char *) hr->bottom(), hr->capacity());
++    assert(!ret, "hottub madvise issue");
++    madvise_freed += hr->capacity();
++    */
+     insert_into_free_list(at(i));
+   }
++  /*
++  gclog_or_tty->print("{[sigve] madvise freed %llu}\n", madvise_freed);
++  */
++
+ }
+ 
+ MemoryUsage HeapRegionManager::get_auxiliary_data_memory_usage() const {
+@@ -463,3 +473,40 @@ void HeapRegionManager::verify_optional() {
+ }
+ #endif // PRODUCT
+ 
++int HeapRegionManager::madvise_free_list(size_t bytes, unsigned long long &freed_bytes) {
++  if (bytes == 0) {
++    return 0;
++  }
++  (void)bytes;
++  // TODO: only advise/free bytes worth of regions
++  // TODO: be smarter about which regions are advised?
++  int freed = 0;
++  FreeRegionListIterator iter(&_free_list);
++  while (iter.more_available()) {
++    HeapRegion* r = iter.get_next();
++    int ret = os::madvise_dontneed((char *)r->bottom(), r->capacity());
++    /* int ret = os::madvise_dontneed((char *)r->bottom(), r->end() - r->bottom()); */
++    assert(!ret, "hottub madvise issue");
++    freed++;
++    freed_bytes += r->capacity();
++    /* freed_bytes += r->end() - r->bottom(); */
++    /* gclog_or_tty->print("{[test] madvise cap: %ld, minus: %ld}\n", r->capacity(), r->end() - r->bottom()); */
++  }
++  return freed;
++}
++
++void HeapRegionManager::madvise_region(HeapRegion* hr) {
++  int ret = os::madvise_dontneed((char *) hr->bottom(), hr->capacity());
++  assert(!ret, "hottub madvise issue");
++}
++
++void HeapRegionManager::insert_list_into_free_list(FreeRegionList* list) {
++  if (UseSIGVE) {
++    FreeRegionListIterator iter(list);
++    while (iter.more_available()) {
++      HeapRegion* hr = iter.get_next();
++      this->madvise_region(hr);
++    }
++  }
++  _free_list.add_ordered(list);
++}
+diff --git a/hotspot/src/share/vm/gc_implementation/g1/heapRegionManager.hpp b/hotspot/src/share/vm/gc_implementation/g1/heapRegionManager.hpp
+index 83996f71..06d3257d 100644
+--- a/hotspot/src/share/vm/gc_implementation/g1/heapRegionManager.hpp
++++ b/hotspot/src/share/vm/gc_implementation/g1/heapRegionManager.hpp
+@@ -159,9 +159,7 @@ public:
+   inline void insert_into_free_list(HeapRegion* hr);
+ 
+   // Insert the given region list into the global free region list.
+-  void insert_list_into_free_list(FreeRegionList* list) {
+-    _free_list.add_ordered(list);
+-  }
++  void insert_list_into_free_list(FreeRegionList* list);
+ 
+   HeapRegion* allocate_free_region(bool is_old) {
+     HeapRegion* hr = _free_list.remove_region(is_old);
+@@ -232,6 +230,10 @@ public:
+   // Return the actual number of uncommitted regions.
+   uint shrink_by(uint num_regions_to_remove);
+ 
++  // hottub
++  int madvise_free_list(size_t bytes, unsigned long long &freed_bytes);
++  void madvise_region(HeapRegion* hr);
++
+   void verify();
+ 
+   // Do some sanity checking.
+diff --git a/hotspot/src/share/vm/gc_implementation/g1/heapRegionManager.inline.hpp b/hotspot/src/share/vm/gc_implementation/g1/heapRegionManager.inline.hpp
+index 96bc92fc..3824b319 100644
+--- a/hotspot/src/share/vm/gc_implementation/g1/heapRegionManager.inline.hpp
++++ b/hotspot/src/share/vm/gc_implementation/g1/heapRegionManager.inline.hpp
+@@ -48,6 +48,9 @@ inline HeapRegion* HeapRegionManager::at(uint index) const {
+ }
+ 
+ inline void HeapRegionManager::insert_into_free_list(HeapRegion* hr) {
++  if (UseSIGVE) {
++    this->madvise_region(hr);
++  }
+   _free_list.add_ordered(hr);
+ }
+ 
+diff --git a/hotspot/src/share/vm/gc_interface/gcCause.cpp b/hotspot/src/share/vm/gc_interface/gcCause.cpp
+index a364214b..cd198a52 100644
+--- a/hotspot/src/share/vm/gc_interface/gcCause.cpp
++++ b/hotspot/src/share/vm/gc_interface/gcCause.cpp
+@@ -103,6 +103,12 @@ const char* GCCause::to_string(GCCause::Cause cause) {
+     case _last_ditch_collection:
+       return "Last ditch collection";
+ 
++    case _sigve:
++      return "sigve";
++
++    case _sigvf:
++      return "sigvf";
++
+     case _last_gc_cause:
+       return "ILLEGAL VALUE - last gc cause - ILLEGAL VALUE";
+ 
+diff --git a/hotspot/src/share/vm/gc_interface/gcCause.hpp b/hotspot/src/share/vm/gc_interface/gcCause.hpp
+index 26ad48f7..fb75e308 100644
+--- a/hotspot/src/share/vm/gc_interface/gcCause.hpp
++++ b/hotspot/src/share/vm/gc_interface/gcCause.hpp
+@@ -74,6 +74,10 @@ class GCCause : public AllStatic {
+     _g1_humongous_allocation,
+ 
+     _last_ditch_collection,
++
++    _sigve,
++    _sigvf,
++
+     _last_gc_cause
+   };
+ 
+diff --git a/hotspot/src/share/vm/opto/compile.cpp b/hotspot/src/share/vm/opto/compile.cpp
+index 439e55e3..e0fd2ebc 100644
+--- a/hotspot/src/share/vm/opto/compile.cpp
++++ b/hotspot/src/share/vm/opto/compile.cpp
+@@ -3480,7 +3480,7 @@ void Compile::verify_graph_edges(bool no_dead_code) {
+     _root->verify_edges(visited);
+     if (no_dead_code) {
+       // Now make sure that no visited node is used by an unvisited node.
+-      bool dead_nodes = 0;
++      int dead_nodes = 0;
+       Unique_Node_List checked(area);
+       while (visited.size() > 0) {
+         Node* n = visited.pop();
+diff --git a/hotspot/src/share/vm/prims/jvm.cpp b/hotspot/src/share/vm/prims/jvm.cpp
+index 07c36de8..3ce26e00 100644
+--- a/hotspot/src/share/vm/prims/jvm.cpp
++++ b/hotspot/src/share/vm/prims/jvm.cpp
+@@ -462,6 +462,25 @@ JVM_ENTRY_NO_ENV(void, JVM_GC(void))
+ JVM_END
+ 
+ 
++JVM_ENTRY_NO_ENV(void, JVM_SIGVE(jint x))
++  if (UseSIGVE) {
++    GCCause::Cause cause;
++    switch (x) {
++    case SIGVE:
++      cause = GCCause::_sigve;
++      break;
++    case SIGVF:
++      cause = GCCause::_sigvf;
++      break;
++    default:
++      tty->print("[error] JVM_SIGVE got %d\n", x);
++      return;
++    }
++    Universe::heap()->collect(cause);
++  }
++JVM_END
++
++
+ JVM_LEAF(jlong, JVM_MaxObjectInspectionAge(void))
+   JVMWrapper("JVM_MaxObjectInspectionAge");
+   return Universe::heap()->millis_since_last_gc();
+diff --git a/hotspot/src/share/vm/prims/jvm.h b/hotspot/src/share/vm/prims/jvm.h
+index 3b36b73a..f077f41a 100644
+--- a/hotspot/src/share/vm/prims/jvm.h
++++ b/hotspot/src/share/vm/prims/jvm.h
+@@ -156,6 +156,9 @@ JVM_Halt(jint code);
+ JNIEXPORT void JNICALL
+ JVM_GC(void);
+ 
++JNIEXPORT void JNICALL
++JVM_SIGVE(jint x);
++
+ /* Returns the number of real-time milliseconds that have elapsed since the
+  * least-recently-inspected heap object was last inspected by the garbage
+  * collector.
+diff --git a/hotspot/src/share/vm/runtime/fprofiler.cpp b/hotspot/src/share/vm/runtime/fprofiler.cpp
+index 58cb6e89..26dc510b 100644
+--- a/hotspot/src/share/vm/runtime/fprofiler.cpp
++++ b/hotspot/src/share/vm/runtime/fprofiler.cpp
+@@ -635,7 +635,7 @@ class vmNode : public ProfilerNode {
+   const char *name()    const { return _name; }
+   bool is_compiled()    const { return true; }
+ 
+-  bool vm_match(const char* name) const { return strcmp(name, _name) == 0; }
++  bool vm_match(const char* name) const { return (name != NULL) ? strcmp(name, _name) == 0 : 1; }
+ 
+   Method* method()          { return NULL; }
+ 
+diff --git a/hotspot/src/share/vm/runtime/globals.hpp b/hotspot/src/share/vm/runtime/globals.hpp
+index 6c9bd3b0..1443787f 100644
+--- a/hotspot/src/share/vm/runtime/globals.hpp
++++ b/hotspot/src/share/vm/runtime/globals.hpp
+@@ -1173,6 +1173,16 @@ class CommandLineFlags {
+   product(bool, ReduceSignalUsage, false,                                   \
+           "Reduce the use of OS signals in Java and/or the VM")             \
+                                                                             \
++  product(bool, UseSIGVEPidFile, false,                                     \
++          "Make the pid file in /tmp/sigve, but nothing else.")             \
++                                                                            \
++  product(bool, UseSIGVE, false,                                            \
++          "I'm not signal handling! You're signal handling!")               \
++                                                                            \
++  product(uintx, SIGVECost, 10,                                             \
++          "handle new sigve signal if:"                                     \
++          "time to handle last sigve < SIGVECost * time since last sigve")  \
++                                                                            \
+   develop_pd(bool, ShareVtableStubs,                                        \
+           "Share vtable stubs (smaller code but worse branch prediction")   \
+                                                                             \
+diff --git a/hotspot/src/share/vm/runtime/java.cpp b/hotspot/src/share/vm/runtime/java.cpp
+index faec9bae..b3594ebb 100644
+--- a/hotspot/src/share/vm/runtime/java.cpp
++++ b/hotspot/src/share/vm/runtime/java.cpp
+@@ -471,6 +471,10 @@ void before_exit(JavaThread * thread) {
+     }
+   }
+ 
++  if (UseSIGVE || UseSIGVEPidFile) {
++    os::sigve_destroy();
++  }
++
+   // The only difference between this and Win32's _onexit procs is that
+   // this version is invoked before any threads get killed.
+   ExitProc* current = exit_procs;
+diff --git a/hotspot/src/share/vm/runtime/os.cpp b/hotspot/src/share/vm/runtime/os.cpp
+index 06e81a55..33372e50 100644
+--- a/hotspot/src/share/vm/runtime/os.cpp
++++ b/hotspot/src/share/vm/runtime/os.cpp
+@@ -388,6 +388,12 @@ void os::signal_init() {
+     }
+     // Handle ^BREAK
+     os::signal(SIGBREAK, os::user_handler());
++
++    if (UseSIGVE || UseSIGVEPidFile) {
++      if (os::sigve_init()) {
++        UseSIGVE = false;
++      }
++    }
+   }
+ }
+ 
+diff --git a/hotspot/src/share/vm/runtime/os.hpp b/hotspot/src/share/vm/runtime/os.hpp
+index e008b9c6..94fab9a9 100644
+--- a/hotspot/src/share/vm/runtime/os.hpp
++++ b/hotspot/src/share/vm/runtime/os.hpp
+@@ -324,6 +324,7 @@ class os: AllStatic {
+                                       bool executable, const char* mesg);
+   static bool   uncommit_memory(char* addr, size_t bytes);
+   static bool   release_memory(char* addr, size_t bytes);
++  static int    madvise_dontneed(char* addr, size_t bytes);
+ 
+   // Touch memory pages that cover the memory range from start to end (exclusive)
+   // to make the OS back the memory range with actual memory.
+@@ -738,6 +739,9 @@ class os: AllStatic {
+   static void* user_handler();
+   static void  terminate_signal_thread();
+   static int   sigexitnum_pd();
++  static int   sigve_init();
++  static void  sigve_destroy();
++  static unsigned long realtime();
+ 
+   // random number generation
+   static long random();                    // return 32bit pseudorandom number
+diff --git a/hotspot/src/share/vm/utilities/ostream.cpp b/hotspot/src/share/vm/utilities/ostream.cpp
+index 21bdd692..b2dc6772 100644
+--- a/hotspot/src/share/vm/utilities/ostream.cpp
++++ b/hotspot/src/share/vm/utilities/ostream.cpp
+@@ -205,8 +205,8 @@ void outputStream::stamp() {
+ 
+   // outputStream::stamp() may get called by ostream_abort(), use snprintf
+   // to avoid allocating large stack buffer in print().
+-  char buf[40];
+-  jio_snprintf(buf, sizeof(buf), "%.3f", _stamp.seconds());
++  char buf[sizeof(unsigned long) * 8 + 1];
++  jio_snprintf(buf, sizeof(buf), "%lu", os::realtime());
+   print_raw(buf);
+ }
+ 
+diff --git a/jdk/make/mapfiles/libjava/mapfile-vers b/jdk/make/mapfiles/libjava/mapfile-vers
+index 09b25bfb..fec7fe00 100644
+--- a/jdk/make/mapfiles/libjava/mapfile-vers
++++ b/jdk/make/mapfiles/libjava/mapfile-vers
+@@ -195,6 +195,7 @@ SUNWprivate_1.1 {
+ 		Java_java_lang_Runtime_freeMemory;
+                 Java_java_lang_Runtime_maxMemory;
+ 		Java_java_lang_Runtime_gc;
++		Java_java_lang_Runtime_sigve;
+ 		Java_java_lang_Runtime_runFinalization0;
+ 		Java_java_lang_Runtime_totalMemory;
+ 		Java_java_lang_Runtime_traceInstructions;
+diff --git a/jdk/src/share/classes/java/lang/Runtime.java b/jdk/src/share/classes/java/lang/Runtime.java
+index 9e53dc93..b7d0067c 100644
+--- a/jdk/src/share/classes/java/lang/Runtime.java
++++ b/jdk/src/share/classes/java/lang/Runtime.java
+@@ -687,6 +687,11 @@ public class Runtime {
+      */
+     public native void gc();
+ 
++    /**
++     * Calls sigve handling function.
++     */
++    public native void sigve(int x);
++
+     /* Wormhole for calling java.lang.ref.Finalizer.runFinalization */
+     private static native void runFinalization0();
+ 
+diff --git a/jdk/src/share/classes/java/lang/System.java b/jdk/src/share/classes/java/lang/System.java
+index b2747fa7..0bafea91 100644
+--- a/jdk/src/share/classes/java/lang/System.java
++++ b/jdk/src/share/classes/java/lang/System.java
+@@ -42,6 +42,9 @@ import sun.reflect.CallerSensitive;
+ import sun.reflect.Reflection;
+ import sun.security.util.SecurityConstants;
+ import sun.reflect.annotation.AnnotationType;
++// sigve
++import sun.misc.Signal;
++import sun.misc.SignalHandler;
+ 
+ /**
+  * The <code>System</code> class contains several useful class fields
+@@ -993,6 +996,13 @@ public final class System {
+         Runtime.getRuntime().gc();
+     }
+ 
++    /**
++     * Calls sigve handling function.
++     */
++    public static void sigve(int x) {
++      Runtime.getRuntime().sigve(x);
++    }
++
+     /**
+      * Runs the finalization methods of any objects pending finalization.
+      * <p>
+@@ -1199,6 +1209,8 @@ public final class System {
+         // Setup Java signal handlers for HUP, TERM, and INT (where available).
+         Terminator.setup();
+ 
++        sigve_setup();
++
+         // Initialize any miscellenous operating system settings that need to be
+         // set for the class libraries. Currently this is no-op everywhere except
+         // for Windows where the process-wide error mode is set before the java.io
+@@ -1220,6 +1232,19 @@ public final class System {
+         sun.misc.VM.booted();
+     }
+ 
++    private static void sigve_setup() {
++        SignalHandler sh = new SignalHandler() {
++            public void handle(Signal sig) {
++                sigve(sig.getNumber());
++            }
++        };
++        try {
++            Signal.handle(new Signal("VE"), sh);
++            Signal.handle(new Signal("VF"), sh);
++        } catch (IllegalArgumentException e) {
++        }
++    }
++
+     private static void setJavaLangAccess() {
+         // Allow privileged classes outside of java.lang
+         sun.misc.SharedSecrets.setJavaLangAccess(new sun.misc.JavaLangAccess(){
+diff --git a/jdk/src/share/javavm/export/jvm.h b/jdk/src/share/javavm/export/jvm.h
+index 611120f2..1d56c9fd 100644
+--- a/jdk/src/share/javavm/export/jvm.h
++++ b/jdk/src/share/javavm/export/jvm.h
+@@ -129,6 +129,9 @@ JVM_Halt(jint code);
+ JNIEXPORT void JNICALL
+ JVM_GC(void);
+ 
++JNIEXPORT void JNICALL
++JVM_SIGVE(jint x);
++
+ /* Returns the number of real-time milliseconds that have elapsed since the
+  * least-recently-inspected heap object was last inspected by the garbage
+  * collector.
+diff --git a/jdk/src/share/native/java/lang/Runtime.c b/jdk/src/share/native/java/lang/Runtime.c
+index dece2232..1f16ecb4 100644
+--- a/jdk/src/share/native/java/lang/Runtime.c
++++ b/jdk/src/share/native/java/lang/Runtime.c
+@@ -65,6 +65,12 @@ Java_java_lang_Runtime_gc(JNIEnv *env, jobject this)
+     JVM_GC();
+ }
+ 
++JNIEXPORT void JNICALL
++Java_java_lang_Runtime_sigve(JNIEnv *env, jobject this, jint x)
++{
++    JVM_SIGVE(x);
++}
++
+ JNIEXPORT void JNICALL
+ Java_java_lang_Runtime_traceInstructions(JNIEnv *env, jobject this, jboolean on)
+ {
+diff --git a/sigve/Makefile b/sigve/Makefile
+new file mode 100644
+index 00000000..830461ad
+--- /dev/null
++++ b/sigve/Makefile
+@@ -0,0 +1,29 @@
++.PHONY: debug install clean help
++
++CXX = g++
++CONF = release
++BUILD_DIR = ../build/linux-x86_64-normal-server-$(CONF)
++BUILD_JVM = $(BUILD_DIR)/images/j2sdk-image
++
++sigve: sigve.cpp
++	$(CXX) -O3 -std=c++11 -pthread sigve.cpp -o sigve
++
++debug: sigve.cpp
++	$(CXX) -g -O0 -std=c++11 -pthread sigve.cpp -o sigve
++
++install:
++	mv sigve $(BUILD_JVM)/bin
++
++clean:
++	rm -f sigve
++
++help:
++	@echo
++	@echo 'sigve Makefile'
++	@echo '=============='
++	@echo 'commands:'
++	@echo '- sigve (default): build sigve monitor'
++	@echo '- install: put it in JVM image (set CONF or default to release)'
++	@echo '- clean: so fresh and so clean'
++	@echo '- help: show this help'
++	@echo
+diff --git a/sigve/sigve.cpp b/sigve/sigve.cpp
+new file mode 100644
+index 00000000..c7ec5df8
+--- /dev/null
++++ b/sigve/sigve.cpp
+@@ -0,0 +1,618 @@
++#include <cassert>
++#include <stdio.h>
++#include <errno.h>
++#include <unistd.h>
++#include <sys/epoll.h>
++#include <sys/inotify.h>
++#include <sys/sysinfo.h>
++#include <sys/stat.h>
++#include <sys/types.h>
++#include <signal.h>
++#include <time.h>
++#include <string>
++#include <cstring>
++#include <thread>
++#include <vector>
++#include <mutex>
++#include <algorithm>
++#include <chrono>
++
++const char* PATHNAME = "/tmp/sigve";
++
++enum struct signo {
++	kill = 9,
++	sigvf = 63,
++	sigve = 64,
++};
++
++enum struct memory_level {
++	unknown = -1,
++	bot,
++	low,
++	high,
++	top,
++};
++
++unsigned long realtime() {
++	struct timespec tp;
++	clock_gettime(CLOCK_REALTIME, &tp);
++	return tp.tv_sec * 1000000000UL + tp.tv_nsec;
++}
++
++struct sigv_config {
++	unsigned long top;
++	unsigned long low_wm_init;
++	unsigned long high_wm_init;
++	int low_wm_ratio;
++	int high_wm_ratio;
++	int low_wm_period;
++	int high_wm_period;
++	int wm_increment_percent;
++	int high_wm_pool;
++	int expected_shrink;
++	int kill_time;
++	int poll_time;
++};
++
++template <class T>
++class ring_buffer {
++public:
++	ring_buffer(int capacity) : ring(std::unique_ptr<T[]>(new T[capacity + 1])),
++		capacity(capacity), tail(0) {}
++	void push(T val) {
++		ring[tail] = val;
++		tail = (tail + 1) % capacity;
++	}
++	T& operator[] (const int index) {
++		return ring[(tail - index - 1 + capacity) % capacity];
++	}
++	const int capacity;
++private:
++	std::unique_ptr<T[]> ring;
++	int tail;
++};
++
++class sigv_ring {
++public:
++	sigv_ring(int low_wm_period, int high_wm_period) :
++		low_wm_period(low_wm_period),
++		high_wm_period(high_wm_period),
++		history(low_wm_period > high_wm_period ? low_wm_period : high_wm_period) {}
++	void push(memory_level level) { history.push(level); }
++	void calculate_ratios();
++	double low_wm_ratio;
++	double high_wm_ratio;
++private:
++	ring_buffer<memory_level> history;
++	int low_wm_period;
++	int high_wm_period;
++};
++
++void sigv_ring::calculate_ratios() {
++	int above_top = 0;
++	int below_top = 0;
++	int above_high = 0;
++	int below_high = 0;
++	for (int i = 0; i < history.capacity; i++) {
++		memory_level level = history[i];
++		switch (level) {
++		case memory_level::top:
++			if (i < high_wm_period) {
++				above_top++;
++			}
++			if (i < low_wm_period) {
++				above_high++;
++			}
++			break;
++		case memory_level::high:
++			if (i < high_wm_period) {
++				below_top++;
++			}
++			if (i < low_wm_period) {
++				above_high++;
++			}
++			break;
++		default:
++			if (i < high_wm_period) {
++				below_top++;
++			}
++			if (i < low_wm_period) {
++				below_high++;
++			}
++			break;
++		}
++	}
++	high_wm_ratio = below_top * 1.0 / above_top;
++	low_wm_ratio = below_high * 1.0 / above_high;
++	fprintf(stderr, "[trace] below_high %d above_high %d low_wm_ratio %f below_top %d above_top %d high_wm_ratio %f\n", below_high, above_high, low_wm_ratio, below_top, above_top, high_wm_ratio);
++}
++
++class proc_info {
++public:
++	std::string pid;
++	unsigned long start_time;
++	unsigned long rss; // bytes
++	static long page_size; // bytes
++
++	proc_info (const char* pid) : pid(pid) {};
++
++	static bool cmp_start_time(proc_info &p0, proc_info &p1) { return p0.start_time > p1.start_time; }
++
++	static bool cmp_rss(proc_info &p0, proc_info &p1) { return p0.rss > p1.rss; }
++
++	bool update_start_time() {
++		start_time = read_stat(22);
++		if (start_time > 0) {
++			return true;
++		} else {
++			return false;
++		}
++	}
++
++	bool update_memory() {
++		rss = read_stat(24) * page_size;
++		if (rss > 0) {
++			return true;
++		} else {
++			return false;
++		}
++	}
++
++private:
++	unsigned long read_stat(int index);
++};
++
++long proc_info::page_size = 0;
++
++unsigned long proc_info::read_stat(int index) {
++	assert(index == 22 || index == 24); //start_time or rss
++
++	char path[strlen("/proc/32768/stat") + 1];
++	sprintf(path, "/proc/%s/stat", this->pid.c_str());
++	FILE* fd = fopen(path, "r");
++	if (fd == NULL) {
++		fprintf(stderr, "[error] unable to open '%s': %s\n", path, strerror(errno));
++		return 0;
++	}
++
++	char buf[4096];
++	size_t len = fread(buf, sizeof(char), 4096 - 1, fd);
++	fclose(fd);
++	buf[len] = '\0';
++
++	char* tok = strtok(buf, " ");
++	unsigned long value = 0;
++	int i = 0;
++	while (tok != NULL) {
++		i++;
++		if (i == index) {
++			value = strtoul(tok, NULL, 0);
++			fprintf(stderr, "[trace] read_stat got %lu for index %d\n", value, i);
++			break;
++		}
++		tok = strtok(NULL, " ");
++	}
++	return value;
++}
++
++struct shared_vector {
++	std::vector<proc_info> vector;
++	std::mutex mutex;
++};
++
++int path_init() {
++	if (access(PATHNAME, R_OK | W_OK | X_OK)) {
++		if (mkdir(PATHNAME, S_IRWXU | S_IRWXG | S_IRWXO)) {
++			fprintf(stderr, "[error] mkdir /tmp/sigve (%d %s)\n", errno, strerror(errno));
++			return -1;
++		}
++		/*
++		 * tmp has umask 022 which prevents other users from using sigve
++		 * with that said you must also have CAP_KILL (be root) to send signals to other users
++		 */
++		if (chmod(PATHNAME, S_IRWXU | S_IRWXG | S_IRWXO)) {
++			fprintf(stderr, "[error] chmod 0777 /tmp/sigve (%d %s)\n", errno, strerror(errno));
++			return -2;
++		}
++	}
++	return 0;
++}
++
++unsigned long query_free_mem() {
++	struct sysinfo info;
++	sysinfo(&info);
++	return info.freeram * info.mem_unit;
++}
++
++unsigned long query_meminfo_available() {
++	FILE* fd = fopen("/proc/meminfo", "r");
++	if (fd == NULL) {
++		fprintf(stderr, "[error] unable to open /proc/meminfo: %s\n", strerror(errno));
++		return 0;
++	}
++	char buf[4096];
++	size_t len = fread(buf, sizeof(char), 4096 - 1, fd);
++	fclose(fd);
++	buf[len] = '\0';
++	const char* header = "MemAvailable:";
++	char* pos = strstr(buf, header);
++	if (pos == NULL) {
++		fprintf(stderr, "[error] could not find MemAvailable in /proc/meminfo\n");
++		return 0;
++	}
++	unsigned long val = strtoul(pos + strlen(header), NULL, 10);
++	fprintf(stderr, "[trace] query_meminfo_available got %lu kB\n", val);
++	return val * 1024;
++}
++
++int send_kill(std::string &pid, signo sig) {
++	pid_t _pid = atoi(pid.c_str());
++
++	fprintf(stderr, "[info] (%lu ns) kill %d pid: %d\n", realtime(), static_cast<int>(sig), _pid);
++	if(kill(_pid, static_cast<int>(sig))) {
++		fprintf(stderr, "[error] send_kill %d to %d (%d %s)\n", static_cast<int>(sig), _pid, errno, strerror(errno));
++		return -1;
++	}
++	return 0;
++}
++
++int epoll_init() {
++	int inotifyfd = inotify_init();
++	if (inotifyfd == -1) {
++		fprintf(stderr, "[error] inotify_init (%d %s)\n", errno, strerror(errno));
++		return -1;
++	}
++
++	int watchfd = inotify_add_watch(inotifyfd, PATHNAME, IN_CREATE);
++	if (watchfd == -1) {
++		fprintf(stderr, "[error] inotify_add_watch '%s' (%d %s)\n", PATHNAME, errno, strerror(errno));
++		return -1;
++	}
++
++	int epollfd = epoll_create1(0);
++	if (epollfd == -1) {
++		fprintf(stderr, "[error] epoll_create1 (%d %s)\n", errno, strerror(errno));
++		return -1;
++	}
++
++	struct epoll_event watch_event;
++	watch_event.events = EPOLLIN;
++	watch_event.data.fd = inotifyfd;
++	if (epoll_ctl(epollfd, EPOLL_CTL_ADD, inotifyfd, &watch_event) == -1) {
++		fprintf(stderr, "[error] epoll_ctl: listen_sock (%d %s)\n", errno, strerror(errno));
++		return -1;
++	}
++
++	return epollfd;
++}
++
++void inotify(struct shared_vector &procs) {
++	int epollfd = epoll_init();
++	if (epollfd == -1) {
++		fprintf(stderr, "[error] epoll_init failed cannot recover\n");
++		exit(EXIT_FAILURE);
++	}
++
++	while (true) {
++		int nfds;
++		struct epoll_event events[10];
++
++		nfds = epoll_wait(epollfd, events, 10, -1);
++		if (nfds == -1) {
++			fprintf(stderr, "[error] epoll_wait (%d %s)\n", errno, strerror(errno));
++			exit(EXIT_FAILURE);
++		}
++
++		for (int i = 0; i < nfds; i++) {
++			int len;
++			char buf[4096]
++				__attribute__ ((aligned(__alignof__(struct inotify_event))));
++
++			len = read(events[i].data.fd, buf, sizeof(buf));
++			if (len == -1) {
++				fprintf(stderr, "[error] read (%d %s)\n", errno, strerror(errno));
++			}
++
++			const struct inotify_event* event;
++			for (char* ptr = buf; ptr < buf + len; ptr += sizeof(struct inotify_event) + event->len) {
++				event = (const struct inotify_event*) ptr;
++				if (event->mask & IN_CREATE) {
++					fprintf(stderr, "[info] registered pid: %s\n", event->name);
++					proc_info proc(event->name);
++					proc.update_start_time();
++					{
++						std::lock_guard<std::mutex> guard(procs.mutex);
++						procs.vector.push_back(proc);
++					}
++				} else if (event->mask & IN_DELETE) {
++					//TODO: handle this by deleting pid
++					fprintf(stderr, "[info] deleted pid: %s\n", event->name);
++				} else {
++					fprintf(stderr, "[warn] unknown inotify event mask %u\n", event->mask);
++				}
++			}
++		}
++	}
++}
++
++void poll_mem(struct shared_vector &procs, sigv_config cfg) {
++	struct sysinfo info;
++	sysinfo(&info);
++	unsigned long total = info.totalram * info.mem_unit;
++	unsigned long top_time_start = 0;
++	unsigned long low_wm = cfg.low_wm_init;
++	unsigned long high_wm = cfg.high_wm_init;
++	unsigned long wm_increment = cfg.top * (cfg.wm_increment_percent * 1.0 / 100);
++	sigv_ring history(cfg.low_wm_period, cfg.high_wm_period);
++
++	while (true) {
++		sysinfo(&info);
++		unsigned long free = query_meminfo_available();
++
++		unsigned long low_wm_required = total - low_wm;
++		unsigned long high_wm_required = total - high_wm;
++		unsigned long top_required = total - cfg.top;
++		memory_level level = memory_level::unknown;
++		if (free < top_required) {
++			level = memory_level::top;
++		} else if (free < high_wm_required) {
++			level = memory_level::high;
++		} else if (free < low_wm_required) {
++			level = memory_level::low;
++		} else {
++			level = memory_level::bot;
++		}
++		history.push(level);
++		fprintf(stderr, "[trace] free %lu, low_wm %lu, high_wm %lu, level %d\n", free, low_wm, high_wm, static_cast<int>(level));
++		assert(level != memory_level::unknown);
++
++		if (level < memory_level::top) {
++			fprintf(stderr, "[debug] reset top_time_start\n");
++			top_time_start = 0;
++		}
++
++		if (level >= memory_level::low) {
++			{
++				std::lock_guard<std::mutex> guard(procs.mutex);
++				for (auto it = procs.vector.begin(); it != procs.vector.end();) {
++					if (send_kill(it->pid, signo::sigve)) {
++						it = procs.vector.erase(it);
++					} else {
++						it++;
++					}
++				}
++			}
++
++			history.calculate_ratios();
++			if (level == memory_level::high && history.high_wm_ratio >= cfg.high_wm_ratio) {
++				high_wm = std::min(high_wm + wm_increment, cfg.top);
++			}
++			if (history.low_wm_ratio >= cfg.low_wm_ratio) {
++				low_wm = std::min(low_wm + wm_increment, high_wm);
++			}
++		}
++
++		if (level >= memory_level::high) {
++			// get all processes sorted from newest to oldest
++			std::vector<proc_info> procs_time_sorted;
++			{
++				std::lock_guard<std::mutex> guard(procs.mutex);
++				procs_time_sorted = procs.vector;
++			}
++			std::sort(procs_time_sorted.begin(), procs_time_sorted.end(), proc_info::cmp_start_time);
++
++			// select high wm process pool of newest processes totalling high_wm_pool % of system memory
++			std::vector<proc_info> high_wm_proc_pool;
++			unsigned long memory = 0;
++			unsigned long high_wm_pool_memory = high_wm * (cfg.high_wm_pool * 1.0 / 100);
++			unsigned long reclaim_goal = high_wm_required - free;
++			unsigned long reclaimable = 0;
++			for (proc_info &proc : procs_time_sorted) {
++				proc.update_memory();
++				fprintf(stderr, "[debug] processes by time %s %lu\n", proc.pid.c_str(), proc.rss);
++				high_wm_proc_pool.push_back(proc);
++				memory += proc.rss;
++				reclaimable += proc.rss * (cfg.expected_shrink * 1.0 / 100);
++				if (memory > high_wm_pool_memory && reclaimable > reclaim_goal) {
++					break;
++				}
++			}
++
++			// get subset of list where total expected shrink memory drops free memory below high wm
++			std::sort(high_wm_proc_pool.begin(), high_wm_proc_pool.end(), proc_info::cmp_rss);
++
++			// if you're above top signal everyone or else just signal the "bad" processes
++			if (level == memory_level::top && high_wm != cfg.top) {
++				for (proc_info &proc : procs_time_sorted) {
++					send_kill(proc.pid, signo::sigvf);
++				}
++			} else if (level >= memory_level::high && high_wm != low_wm) {
++				reclaimable = 0;
++				for (proc_info &proc : high_wm_proc_pool) {
++					fprintf(stderr, "[debug] processes by memory %s %lu\n", proc.pid.c_str(), proc.rss);
++					send_kill(proc.pid, signo::sigvf);
++					reclaimable += proc.rss * (cfg.expected_shrink * 1.0 / 100);
++					if (reclaimable > reclaim_goal) {
++						break;
++					}
++				}
++			}
++
++			// only start the kill timer if you're above top
++			if (level == memory_level::top) {
++				unsigned long time = realtime();
++				if (top_time_start == 0) {
++					top_time_start = time;
++				} else if (time - top_time_start > (unsigned long) cfg.kill_time * 1000 * 1000) {
++					// check if we are still over high wm and kill as necessary
++					unsigned long new_free = query_meminfo_available();
++					unsigned long kill_reclaim_goal = top_required - new_free;
++					unsigned long reclaimed = 0;
++					fprintf(stderr, "[debug] new_free %lu top_required %lu\n", new_free, top_required);
++					if (new_free < top_required) {
++						for (proc_info &proc : high_wm_proc_pool) {
++							send_kill(proc.pid, signo::kill);
++							reclaimed += proc.rss;
++							if (reclaimed > kill_reclaim_goal) {
++								break;
++							}
++						}
++					}
++				} else {
++					fprintf(stderr, "[debug] time %lu top_time_start %lu\n", time, top_time_start);
++				}
++			}
++
++			if (history.low_wm_ratio < cfg.low_wm_ratio) {
++				if (wm_increment > low_wm) {
++					low_wm = 0;
++				} else {
++					low_wm -= wm_increment;
++				}
++			}
++			if (level == memory_level::top && history.high_wm_ratio < cfg.high_wm_ratio) {
++				if (wm_increment > high_wm) {
++					high_wm = 0;
++				} else {
++					high_wm = std::max(high_wm - wm_increment, low_wm);
++				}
++			}
++		}
++
++		fprintf(stderr, "[info] (%lu ns) free %lu, low_wm %lu, high_wm %lu, level %d\n", realtime(), free, low_wm, high_wm, static_cast<int>(level));
++		std::this_thread::sleep_for(std::chrono::milliseconds(cfg.poll_time));
++	}
++}
++
++int main(int argc, char* argv[]) {
++	if (argc != 13) {
++		fprintf(stderr, "[error] usage: sigve <top> <initial low wm> <inital high wm> <low wm ratio> <high wm ratio> <high wm pool %%> <expected shrink %%> <kill time> <poll time>\n");
++		fprintf(stderr, "\ttop of memory: (bytes) maximum amount of memory the monitor will allow to be used\n");
++		fprintf(stderr, "\tlow watermark initial value: (bytes) memory used before sending low watermark signal\n");
++		fprintf(stderr, "\thigh watermark: (bytes) memory used before sending high watermark signal\n");
++		fprintf(stderr, "\tlow watermark ratio: ratio of ticks below high threshold compared to above\n");
++		fprintf(stderr, "\thigh watermark ratio: ratio of ticks below top of memory compared to above\n");
++		fprintf(stderr, "\tlow watermark period: number of ticks used to calculate low watermark ratio\n");
++		fprintf(stderr, "\thigh watermark period: number of ticks used to calculate high watermark ratio\n");
++		fprintf(stderr, "\thigh wm pool %%: percent of system memory processes selected for high watermark signal must account for\n");
++		fprintf(stderr, "\texpected shrink %%: estimated %% of memory any process will shrink by\n");
++		fprintf(stderr, "\tkill time: time in milliseconds before sending high wm pool kill9 after sending high wm pool the high wm signal\n");
++		fprintf(stderr, "\tpoll time: time in milliseconds to poll meminfo\n");
++		exit(EXIT_FAILURE);
++	}
++
++	unsigned long top = strtoul(argv[1], NULL, 0);
++	if (top == 0) {
++		fprintf(stderr, "[error] invalid top value: %s\n", argv[1]);
++		exit(EXIT_FAILURE);
++	}
++	fprintf(stderr, "[trace] top = %lu\n", top);
++
++	unsigned long low_wm_init = strtoul(argv[2], NULL, 0);
++	if (low_wm_init == 0) {
++		fprintf(stderr, "[error] invalid initial low wm: %s\n", argv[2]);
++		exit(EXIT_FAILURE);
++	}
++	fprintf(stderr, "[trace] low wm = %lu\n", low_wm_init);
++
++	unsigned long high_wm_init = strtoul(argv[3], NULL, 0);
++	if (high_wm_init == 0) {
++		fprintf(stderr, "[error] invalid initial high wm: %s\n", argv[3]);
++		exit(EXIT_FAILURE);
++	}
++	fprintf(stderr, "[trace] high wm = %lu\n", high_wm_init);
++
++	int low_wm_ratio = atoi(argv[4]);
++	if (low_wm_ratio == 0) {
++		fprintf(stderr, "[error] invalid low wm ratio: %s\n", argv[4]);
++		exit(EXIT_FAILURE);
++	}
++	fprintf(stderr, "[trace] low wm ratio = %d\n", low_wm_ratio);
++
++	int high_wm_ratio = atoi(argv[5]);
++	if (high_wm_ratio == 0) {
++		fprintf(stderr, "[error] invalid high wm ratio: %s\n", argv[5]);
++		exit(EXIT_FAILURE);
++	}
++	fprintf(stderr, "[trace] high wm ratio = %d\n", high_wm_ratio);
++
++	int low_wm_period = atoi(argv[6]);
++	if (low_wm_period == 0) {
++		fprintf(stderr, "[error] invalid low wm period: %s\n", argv[6]);
++		exit(EXIT_FAILURE);
++	}
++	fprintf(stderr, "[trace] low wm period = %d\n", low_wm_period);
++
++	int high_wm_period = atoi(argv[7]);
++	if (high_wm_period == 0) {
++		fprintf(stderr, "[error] invalid high wm period: %s\n", argv[7]);
++		exit(EXIT_FAILURE);
++	}
++	fprintf(stderr, "[trace] high wm period = %d\n", high_wm_period);
++
++	int wm_increment_percent = atoi(argv[8]);
++	if (wm_increment_percent < 0) {
++		fprintf(stderr, "[error] invalid wm increment percent: %s\n", argv[8]);
++		exit(EXIT_FAILURE);
++	}
++	fprintf(stderr, "[trace] wm increment percent = %d\n", wm_increment_percent);
++
++	int high_wm_pool = atoi(argv[9]);
++	if (high_wm_pool == 0) {
++		fprintf(stderr, "[error] invalid high wm pool percentage: %s\n", argv[9]);
++		exit(EXIT_FAILURE);
++	}
++	fprintf(stderr, "[trace] high wm pool percentage = %d\n", high_wm_pool);
++
++	int expected_shrink = atoi(argv[10]);
++	if (expected_shrink == 0) {
++		fprintf(stderr, "[error] invalid expected_shrink: %s\n", argv[10]);
++		exit(EXIT_FAILURE);
++	}
++	fprintf(stderr, "[trace] expected_shrink = %d\n", expected_shrink);
++
++	int kill_time = atoi(argv[11]);
++	if (kill_time == 0) {
++		fprintf(stderr, "[error] invalid kill_time: %s\n", argv[11]);
++		exit(EXIT_FAILURE);
++	}
++	fprintf(stderr, "[trace] kill_time = %d\n", kill_time);
++
++	int poll_time = atoi(argv[12]);
++	if (poll_time == 0) {
++		fprintf(stderr, "[error] invalid poll_time: %s\n", argv[12]);
++		exit(EXIT_FAILURE);
++	}
++	fprintf(stderr, "[trace] poll_time = %d\n", poll_time);
++
++	if (path_init()) {
++		fprintf(stderr, "[error] path_init failed cannot recover\n");
++		exit(EXIT_FAILURE);
++	}
++
++	sigv_config cfg = {
++		top,
++		low_wm_init,
++		high_wm_init,
++		low_wm_ratio,
++		high_wm_ratio,
++		low_wm_period,
++		high_wm_period,
++		wm_increment_percent,
++		high_wm_pool,
++		expected_shrink,
++		kill_time,
++		poll_time,
++	};
++
++	proc_info::page_size = sysconf(_SC_PAGESIZE);
++	struct shared_vector procs;
++	std::thread t0(inotify, std::ref(procs));
++	std::thread t1(poll_mem, std::ref(procs), cfg);
++
++	t0.join();
++	t1.join();
++
++	fprintf(stderr, "[error] got past thread join?\n");
++	exit(EXIT_FAILURE);
++}

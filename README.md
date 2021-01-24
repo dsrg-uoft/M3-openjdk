@@ -8,8 +8,8 @@ The monitor is also available separately at [https://github.com/dsrg-uoft/M3-mon
 ### Instructions
 
 1. Clone OpenJDK 8: `hg clone http://hg.openjdk.java.net/jdk8u/jdk8u`
-1. Checkout tag: `hg up jdk8u172-b11`
 1. Get source: `bash get_source.sh`
+1. Checkout tag: `bash ./make/scripts/hgforest.sh up jdk8u172-b11`
 1. Apply patch: `patch -p1 < openjdk8.patch`
 1. Configure: `bash configure`
 1. Build: `make image`
